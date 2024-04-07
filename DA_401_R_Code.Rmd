@@ -1,0 +1,270 @@
+---
+title: "Untitled"
+author: "Jonathan Adamson"
+date: "2024-04-04"
+output: html_document
+---
+
+```{r}
+# Loading packages
+library(tidyr)
+library(dplyr)
+library(caret)
+library(pROC)
+library(randomForest)
+library(neuralnet)
+library(ggplot2)
+library(knitr)
+```
+
+```{r}
+# Importing data and subsetting to variables I am using
+nba_player_data <- read.csv("NBA_Player_Data.csv", stringsAsFactors = FALSE)
+nba_player_data <- subset(nba_player_data, select = c("Player", "year", "All_NBA", "PTS", "FG.","X3P.","X2P.","BLK","AST","TRB", "STL"))
+
+```
+
+## Logistic Regression
+```{r}
+# Prepare the data
+data <- nba_player_data %>%
+  select(-c("year", "Player"))  # Exclude 'Year' and 'Player' columns for this example
+
+# Split data into training and testing sets (80% training, 20% testing)
+set.seed(123)
+trainIndex <- createDataPartition(data$All_NBA, p = 0.8, list = FALSE)
+trainData <- data[trainIndex, ]
+testData <- data[-trainIndex, ]
+
+# Train logistic regression model
+model_logreg <- glm(All_NBA ~ ., data = trainData, family = binomial)
+
+# Make predictions on the test set
+predictions_logreg <- predict(model_logreg, newdata = testData, type = "response")
+
+# Evaluate the model
+confusion_matrix_logreg <- table(testData$All_NBA, predictions_logreg > 0.5)
+accuracy_logreg <- sum(diag(confusion_matrix_logreg)) / sum(confusion_matrix_logreg)
+print(confusion_matrix_logreg)
+print(paste("Logistic Regression Accuracy:", accuracy_logreg))
+
+# ROC curve and AUC for logistic regression
+roc_obj_logreg <- roc(testData$All_NBA, predictions_logreg)
+plot(roc_obj_logreg, main = "Logistic Regression ROC Curve")
+auc_value_logreg <- auc(roc_obj_logreg)
+print(paste("Logistic Regression AUC:", auc_value_logreg))
+
+# Convert predictions to factors (0 and 1)
+binary_predictions_logreg <- as.integer(predictions_logreg > 0.5)
+binary_predictions_logreg <- factor(binary_predictions_logreg, levels = c(0, 1))
+
+# Convert actual target values to factors with the same levels
+actual_values <- factor(testData$All_NBA, levels = c(0, 1))
+
+# Calculate precision, recall, and F1-score for logistic regression
+precision_logreg <- posPredValue(binary_predictions_logreg, actual_values)
+recall_logreg <- sensitivity(binary_predictions_logreg, actual_values)
+f1_logreg <- (2 * precision_logreg * recall_logreg) / (precision_logreg + recall_logreg)
+
+# Print the performance metrics for logistic regression
+print(paste("Logistic Regression Precision:", precision_logreg))
+print(paste("Logistic Regression Recall (Sensitivity):", recall_logreg))
+print(paste("Logistic Regression F1 Score:", f1_logreg))
+
+summary(model_logreg)
+
+```
+
+# Logistic Regression Performance Metric Table
+```{r}
+# Create a data frame for the metrics
+metrics_df <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall (Sensitivity)", "F1 Score"),
+  Value = c(
+            format(accuracy_logreg, digits = 4),
+            format(precision_logreg, digits = 4),
+            format(recall_logreg, digits = 4),
+            format(f1_logreg, digits = 4))
+)
+
+table_title <- "Performance Metrics for Logistic Regression Model"
+
+# Use kable to format the table
+kable(metrics_df, format = "markdown", col.names = c("Metric", "Value"), caption = table_title)
+
+```
+
+# Logistic Regression Summary Table
+```{r}
+# Get summary of the model
+summary_table <- summary(model_logreg)
+
+# Modify p-values in the summary table
+summary_table$coefficients[, "Pr(>|z|)"] <- format(summary_table$coefficients[, "Pr(>|z|)"], digits = 4)
+
+# Format the table using kable
+kable(summary_table$coefficients, format = "markdown", caption = "Summary of Logistic Regression Model")
+
+# If you're using R Markdown, you can directly include the kable output chunk in your document.
+
+```
+
+
+```{r}
+# Create a data frame for the metrics
+rf_metrics_df <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall (Sensitivity)", "F1 Score"),
+  Value = c(
+            format(accuracy_rf, digits = 4),
+            format(precision_rf, digits = 4),
+            format(recall_rf, digits = 4),
+            format(f1_rf, digits = 4))
+)
+
+table_title <- "Performance Metrics for Random Forest Model"
+
+# Use kable to format the table
+kable(rf_metrics_df, format = "markdown", col.names = c("Metric", "Value"), caption = table_title)
+```
+
+## Random Forest
+```{r}
+
+# Split the data into training and testing sets
+set.seed(123)  # For reproducibility
+train_index_rf <- sample(1:nrow(nba_player_data), 0.8 * nrow(nba_player_data))  # 80% for training
+train_data_rf <- nba_player_data[train_index_rf, ]
+test_data_rf <- nba_player_data[-train_index_rf, ]
+
+# Define predictors (features) and target variable for Random Forest
+predictors_rf <- c("PTS", "FG.", "X2P.", "BLK", "AST", "TRB", "STL")
+target_rf <- "All_NBA"
+
+# Train the Random Forest model
+rf_model <- randomForest(x = train_data_rf[, predictors_rf], y = as.factor(train_data_rf[, target_rf]), ntree = 500)
+
+# Make predictions on the test set
+predictions_rf <- predict(rf_model, newdata = test_data_rf[, predictors_rf])
+
+# Evaluate the Random Forest model
+confusion_matrix_rf <- table(test_data_rf$All_NBA, predictions_rf)
+accuracy_rf <- sum(diag(confusion_matrix_rf)) / sum(confusion_matrix_rf)
+print(confusion_matrix_rf)
+print(paste("Random Forest Accuracy:", accuracy_rf))
+
+# Cross-Validation for Random Forest
+cv_results_rf <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+cv_model_rf <- train(x = train_data_rf[, predictors_rf], y = as.factor(train_data_rf[, target_rf]),
+                  method = "rf", trControl = cv_results_rf, ntree = 500)
+cv_accuracy_rf <- cv_model_rf$results$Accuracy
+print(paste("Random Forest Cross-Validation Accuracy:", mean(cv_accuracy_rf)))
+
+# Feature Importance for Random Forest
+varImpPlot(rf_model)
+
+# ROC Curve and AUC for Random Forest
+roc_curve_rf <- roc(test_data_rf$All_NBA, as.numeric(predictions_rf) - 1)  # Assumes 0/1 labels
+plot(roc_curve_rf, main = "Random Forest ROC Curve")
+print(paste("Random Forest AUC:", round(auc(roc_curve_rf), 3)))
+
+# Convert predictions to factors (0 and 1)
+binary_predictions_rf <- factor(as.integer(predictions_rf), levels = c(0, 1))
+
+# Convert actual target values to factors with the same levels
+actual_values_rf <- factor(test_data_rf$All_NBA, levels = c(0, 1))
+
+# Calculate precision, recall, and F1-score for Random Forest
+precision_rf <- confusion_matrix_rf["1", "1"] / sum(confusion_matrix_rf["1", ])
+recall_rf <- confusion_matrix_rf["1", "1"] / sum(confusion_matrix_rf[, "1"])
+f1_rf <- (2 * precision_rf * recall_rf) / (precision_rf + recall_rf)
+
+# Print confusion matrix and performance metrics for Random Forest
+print(paste("Random Forest Precision:", precision_rf))
+print(paste("Random Forest Recall (Sensitivity):", recall_rf))
+print(paste("Random Forest F1 Score:", f1_rf))
+
+```
+
+# Random Forest Performance Metric Table
+```{r}
+# Create a data frame for the metrics
+rf_metrics_df <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall (Sensitivity)", "F1 Score"),
+  Value = c(
+            format(accuracy_rf, digits = 4),
+            format(precision_rf, digits = 4),
+            format(recall_rf, digits = 4),
+            format(f1_rf, digits = 4))
+)
+
+table_title <- "Performance Metrics for Random Forest Model"
+
+# Use kable to format the table
+kable(rf_metrics_df, format = "markdown", col.names = c("Metric", "Value"), caption = table_title)
+```
+
+# Random Forest Variable Importance Values
+```{r}
+# Get variable importance values
+var_importance <- rf_model$importance
+
+# Print variable importance values
+print(var_importance)
+
+# Plot variable importance
+varImpPlot(rf_model, type = 1, main = "Variable Importance Plot")
+```
+
+## Neural Network
+
+```{r}
+# Define neural network architecture with cross-entropy loss
+normalized_trainData <- scale(trainData)
+
+# Predict using the trained neural network model on the test set
+predictions_nn <- predict(nn_model, testData)
+
+# Convert predictions to binary (0 or 1)
+predictions_binary_nn <- ifelse(predictions_nn > 0.5, 1, 0)
+
+# Evaluate the neural network model on the test set
+confusion_matrix_nn <- table(testData$All_NBA, predictions_binary_nn)
+accuracy_nn <- sum(diag(confusion_matrix_nn)) / sum(confusion_matrix_nn)
+print(confusion_matrix_nn)
+print(paste("Neural Network Accuracy:", accuracy_nn))
+
+precision_nn <- confusion_matrix_nn["1", "1"] / sum(confusion_matrix_nn["1", ])
+recall_nn <- confusion_matrix_nn["1", "1"] / sum(confusion_matrix_nn[, "1"])
+f1_nn <- (2 * precision_nn * recall_nn) / (precision_nn + recall_nn)
+
+print(paste("Neural Network Precision:", precision_nn))
+print(paste("Neural Network Recall (Sensitivity):", recall_nn))
+print(paste("Neural Network F1 Score:", f1_nn))
+
+
+
+```
+
+# Neural Network Performance Metric Table
+
+```{r}
+# Create a data frame for the metrics
+nn_metrics_df <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall (Sensitivity)", "F1 Score"),
+  Value = c(
+            format(accuracy_nn, digits = 4),
+            format(precision_nn, digits = 4),
+            format(recall_nn, digits = 4),
+            format(f1_nn, digits = 4))
+)
+
+table_title <- "Performance Metrics for Random Forest Model"
+
+# Use kable to format the table
+kable(nn_metrics_df, format = "markdown", col.names = c("Metric", "Value"), caption = table_title)
+```
+
+
+
+
+
