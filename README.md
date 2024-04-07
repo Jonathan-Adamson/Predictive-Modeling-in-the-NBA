@@ -13,4 +13,4 @@ This project goes into the realm of sports analytics, focusing on predictive mod
 For this project, the data I used is a collection of basketball statistics sourced from basketball-reference.com. It is a widely recognized online platform that serves as a comprehensive database and statistical resource for basketball enthusiasts, offering detailed information on player and team performance, historical data, and advanced analytics, making it a valuable resource for fans, analysts, and researchers in the basketball community. Data is available in the folder DA_401_Data. All further use of data must include a proper citation to basketball-reference.com.
 
 ### Code
-The code that has been written throughout the process of this research in both Python and R is located within the repository under DA_401_Code. 
+The code that has been written throughout the process of this research in both Python and R is located within the repository under DA_401_Code. Individual year data was first uploaded to Python for data filtering and manipulation. This resulted in the NBA_Player_Data.csv which was then uploaded to R for statistical analysis. 
